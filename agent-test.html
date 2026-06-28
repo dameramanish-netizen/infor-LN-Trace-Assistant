@@ -374,8 +374,8 @@
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', url, true);
-            // Performance checks need more time for large files
-            xhr.timeout = url.includes('/performance') ? 120000 : 60000;  // 120s for performance, 60s for others
+            // Large .gz files need time to upload, decompress, and parse
+            xhr.timeout = 300000;  // 5 minutes for all operations
             
             xhr.onload = () => {
                 if (xhr.status >= 200 && xhr.status < 300) {
