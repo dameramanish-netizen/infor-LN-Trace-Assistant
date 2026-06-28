@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infor LN Trace Assistant</title>
+    <style>
+        * { box-sizing: border-box; }
+        :root {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --accent: #38bdf8;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --user: #0284c7;
+            --agent: #334155;
+            --green: #10b981;
+            --red: #f87171;
+            --warn: #f59e0b;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 1100px;
+            background: var(--panel);
+            border-radius: 12px;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            height: 92vh;
+        }
+        .header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header h2 {
+            margin: 0;
+            font-size: 18px;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--muted);
+            display: inline-block;
+        }
+        .dot.live {
+            background: var(--green);
+        }
+        .status {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .message {
+            padding: 14px 16px;
+            border-radius: 10px;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+        .msg-agent {
+            background: var(--agent);
+            align-self: flex-start;
+            max-width: 90%;
+        }
+        .msg-user {
+            background: var(--user);
+            align-self: flex-end;
+            max-width: 90%;
+            border-bottom-right-radius: 2px;
+        }
+        .msg-error {
+            background: #2d1f1f;
+            color: var(--red);
+            align-self: flex-start;
+            max-width: 90%;
+        }
+        .msg-success {
+            background: #1f3a2f;
+            color: var(--green);
+            align-self: flex-start;
+        }
+        
+        /* Clickable occurrences */
+        .occurrences-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .occurrence-btn {
+            background: #1e3a5f;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 10px 14px;
+            border-radius: 6px;
+            text-align: left;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            font-family: 'Courier New', monospace;
+            word-break: break-word;
+        }
+        .occurrence-btn:hover {
+            background: var(--accent);
+            color: var(--bg);
+        }
+        .occurrence-btn.active {
+            background: var(--accent);
+            color: var(--bg);
+        }
+        
+        /* Stack display */
+        .stack-view {
+            background: #090d16;
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: var(--accent);
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin-top: 12px;
+        }
+        
+        /* Depth comparison */
+        .depth-grid {
+            display: grid;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .depth-row {
+            background: #111827;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 13px;
+        }
+        .depth-row.missing {
+            border-left: 3px solid var(--red);
+            background: #2d1f1f;
+        }
+        .depth-row.match {
+            border-left: 3px solid var(--green);
+        }
+        .depth-row.partial {
+            border-left: 3px solid var(--warn);
+        }
+        .depth-header {
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+        .depth-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            font-size: 12px;
+        }
+        .depth-column h4 {
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+        .depth-column pre {
+            margin: 0;
+            background: #090d16;
+            border-radius: 4px;
+            padding: 8px;
+            overflow-x: auto;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 11px;
+        }
+        
+        /* Performance table */
+        .perf-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-top: 12px;
+        }
+        .perf-table th {
+            background: #1e3a5f;
+            color: var(--accent);
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #334155;
+            font-weight: 600;
+        }
+        .perf-table td {
+            padding: 8px;
+            border: 1px solid #334155;
+            background: #111827;
+        }
+        .perf-table tr:hover td {
+            background: #1e3a5f;
+        }
+        
+        /* Input area */
+        .input-section {
+            padding: 16px 20px;
+            border-top: 1px solid #334155;
+            background: #111827;
+            flex-shrink: 0;
+        }
+        textarea {
+            width: 100%;
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            color: white;
+            padding: 10px;
+            resize: none;
+            height: 46px;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        textarea:focus {
+            outline: 1px solid var(--accent);
+        }
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .file-btn {
+            background: #334155;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #475569;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .file-btn:hover {
+            background: #475569;
+        }
+        .send-btn {
+            background: var(--user);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .send-btn:hover {
+            background: #0270a5;
+        }
+        .send-btn:disabled {
+            background: #475569;
+            cursor: not-allowed;
+        }
+        .file-name {
+            font-size: 12px;
+            color: var(--muted);
+            margin-left: 8px;
+        }
+        
+        /* Quick action buttons */
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .qbtn {
+            background: #1e3a5f;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .qbtn:hover {
+            background: var(--accent);
+            color: var(--bg);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h2><span class="dot" id="dot"></span> Infor LN Trace Assistant</h2>
+        <span class="status" id="status">Connecting...</span>
+    </div>
+    
+    <div class="content" id="content"></div>
+    
+    <div class="input-section">
+        <textarea id="input" placeholder="Type here..."></textarea>
+        <div class="actions">
+            <div>
+                <label class="file-btn" for="files">📎 Attach File(s)</label>
+                <input type="file" id="files" style="display:none;" accept=".txt,.gz" multiple>
+                <span class="file-name" id="file-name"></span>
+            </div>
+            <button class="send-btn" id="send">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API = "https://manish0000000007-ln-trace-analytics-api.hf.space";
+    const content = document.getElementById('content');
+    const input = document.getElementById('input');
+    const fileInput = document.getElementById('files');
+    const fileName = document.getElementById('file-name');
+    const send = document.getElementById('send');
+    const dot = document.getElementById('dot');
+    const status = document.getElementById('status');
+
+    let state = {
+        step: 1,  // 1=greeting, 2=keyword/performance, 3=results
+        files: [],
+        fileCount: 0,
+        keyword: null,
+        selectedOccurrenceId: null
+    };
+
+    function msg(text, type = 'agent') {
+        const div = document.createElement('div');
+        div.className = `message msg-${type}`;
+        div.innerHTML = text;
+        content.appendChild(div);
+        content.scrollTop = content.scrollHeight;
+        return div;
+    }
+
+    function qbtn(label, action) {
+        const btn = document.createElement('button');
+        btn.className = 'qbtn';
+        btn.innerText = label;
+        btn.onclick = () => {
+            msg(label, 'user');
+            action();
+        };
+        return btn;
+    }
+
+    function xhrPost(url, formData) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', url, true);
+            xhr.timeout = 30000;  // 30 second timeout
+            
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try { resolve(JSON.parse(xhr.responseText)); }
+                    catch (e) { reject(new Error('Invalid JSON: ' + xhr.responseText.slice(0, 100))); }
+                } else {
+                    reject(new Error(`Server error ${xhr.status}: ${xhr.responseText.slice(0, 200)}`));
+                }
+            };
+            
+            xhr.onerror = (e) => {
+                console.error('XHR Error:', e);
+                reject(new Error('Network error — check browser console for details'));
+            };
+            
+            xhr.ontimeout = () => reject(new Error('Request timeout — API took too long'));
+            
+            xhr.send(formData);
+        });
+    }
+
+    fileInput.addEventListener('change', (e) => {
+        const c = e.target.files.length;
+        fileName.innerText = c === 1 
+            ? `📄 ${e.target.files[0].name}` 
+            : c > 1 ? `📄 ${c} files` : '';
+    });
+
+    send.addEventListener('click', async () => {
+        const text = input.value.trim();
+        const files = fileInput.files;
+
+        if (state.step === 1) {
+            // Step 1: Need files
+            if (files.length === 0) {
+                msg('Please attach a file first.', 'agent');
+                return;
+            }
+            state.fileCount = files.length;
+            state.files = Array.from(files);
+            msg(`📁 File(s) attached: ${state.fileCount}`, 'user');
+            input.value = '';
+            step2();
+            return;
+        }
+
+        if (state.step === 2) {
+            // Step 2: Need keyword or performance
+            if (!text) {
+                msg('Please enter a keyword or "performance".', 'agent');
+                return;
+            }
+            state.keyword = text;
+            msg(text, 'user');
+            input.value = '';
+            await step3(files);
+            return;
+        }
+
+        if (state.step === 3 && state.fileCount === 1 && !text.toLowerCase().includes('performance')) {
+            // Showing occurrences — user clicked one or wants another search
+            const occId = parseInt(text);
+            if (!isNaN(occId)) {
+                showStack(occId);
+                input.value = '';
+                return;
+            }
+        }
+
+        // Default: restart
+        state = { step: 1, files: [], fileCount: 0, keyword: null };
+        greeting();
+    });
+
+    function greeting() {
+        state.step = 1;
+        content.innerHTML = '';
+        msg('👋 Hi, I\'m the <strong>Infor LN Trace Assistant</strong><br>Please provide a file to analyze further.');
+    }
+
+    function step2() {
+        state.step = 2;
+        if (state.fileCount === 1) {
+            msg('Now, <strong>enter the keyword you want to search</strong> or enter <strong>"performance"</strong> to find slow functions.');
+        } else {
+            msg('Now, <strong>enter the keyword</strong> to check the next depths of the keyword from calling to returning.');
+        }
+    }
+
+    async function step3(files) {
+        state.step = 3;
+        const progressMsg = msg('⚡ Analyzing...', 'agent');
+
+        try {
+            let result;
+
+            if (state.fileCount === 1) {
+                if (state.keyword.toLowerCase() === 'performance') {
+                    // Performance check
+                    const fd = new FormData();
+                    fd.append('file', files[0]);
+                    result = await xhrPost(`${API}/api/performance`, fd);
+                    showPerformance(progressMsg, result);
+                } else {
+                    // Trace debugger
+                    const fd = new FormData();
+                    fd.append('file', files[0]);
+                    fd.append('keyword', state.keyword);
+                    result = await xhrPost(`${API}/api/debug`, fd);
+                    showOccurrences(progressMsg, result);
+                }
+            } else {
+                // Dual file comparison
+                const fd = new FormData();
+                fd.append('file1', files[0]);
+                fd.append('file2', files[1]);
+                fd.append('keyword', state.keyword);
+                result = await xhrPost(`${API}/api/compare`, fd);
+                showComparison(progressMsg, result);
+            }
+        } catch (err) {
+            progressMsg.className = 'message msg-error';
+            progressMsg.innerText = '❌ ' + err.message;
+        }
+    }
+
+    function showOccurrences(progressMsg, result) {
+        if (result.error) {
+            progressMsg.className = 'message msg-error';
+            progressMsg.innerText = '❌ ' + result.error;
+            return;
+        }
+
+        progressMsg.remove();
+        msg(`✅ Found <strong>${result.total_occurrences}</strong> occurrence(s) of "<strong>${result.keyword}</strong>"<br>Click on any to see the full call stack:`, 'agent');
+
+        const list = document.createElement('div');
+        list.className = 'occurrences-list';
+
+        result.occurrences.forEach(occ => {
+            const btn = document.createElement('button');
+            btn.className = 'occurrence-btn';
+            btn.innerText = `[Line ${occ.line_number}] ${occ.matched_text}`;
+            btn.dataset.id = occ.id;
+            btn.onclick = () => showStack(occ.id, occ.stack_context);
+            list.appendChild(btn);
+        });
+
+        content.appendChild(list);
+        content.scrollTop = content.scrollHeight;
+    }
+
+    function showStack(occId, context) {
+        // Remove old stack if exists
+        const old = document.getElementById('stack-view');
+        if (old) old.remove();
+
+        const div = document.createElement('div');
+        div.id = 'stack-view';
+        div.className = 'stack-view';
+        div.innerText = context || 'Loading...';
+        content.appendChild(div);
+        content.scrollTop = content.scrollHeight;
+    }
+
+    function showPerformance(progressMsg, result) {
+        if (result.error) {
+            progressMsg.className = 'message msg-error';
+            progressMsg.innerText = '❌ ' + result.error;
+            return;
+        }
+
+        progressMsg.remove();
+        msg(`✅ <strong>Performance Analysis Complete</strong><br>Scanned ${result.scanned_lines.toLocaleString()} lines<br><strong>${result.slow_calls_found}</strong> slow functions found (>10ms):`, 'agent');
+
+        // Top slowest table
+        if (result.top_slowest && result.top_slowest.length > 0) {
+            msg('<strong>⏱️ TOP 15 SLOWEST FUNCTIONS:</strong>', 'agent');
+            const table = document.createElement('table');
+            table.className = 'perf-table';
+            table.innerHTML = `
+                <tr>
+                    <th>Function</th>
+                    <th>Table</th>
+                    <th>Duration (ms)</th>
+                    <th>Object</th>
+                </tr>
+                ${result.top_slowest.map(r => `
+                    <tr>
+                        <td>${r.FunctionName || 'N/A'}</td>
+                        <td>${r.TableName || 'N/A'}</td>
+                        <td>${r.Duration_MS}</td>
+                        <td>${r.ExecutingObject || 'N/A'}</td>
+                    </tr>
+                `).join('')}
+            `;
+            content.appendChild(table);
+        }
+
+        // Bottleneck table
+        if (result.bottlenecks && result.bottlenecks.length > 0) {
+            msg('<strong>💥 TOP 15 BOTTLENECKS (BY TOTAL TIME):</strong>', 'agent');
+            const table = document.createElement('table');
+            table.className = 'perf-table';
+            table.innerHTML = `
+                <tr>
+                    <th>Function</th>
+                    <th>Table</th>
+                    <th>Total (ms)</th>
+                    <th>Count</th>
+                </tr>
+                ${result.bottlenecks.map(r => `
+                    <tr>
+                        <td>${r.FunctionName}</td>
+                        <td>${r.TableName}</td>
+                        <td>${r.Total_Duration.toFixed(2)}</td>
+                        <td>${r.Executions}</td>
+                    </tr>
+                `).join('')}
+            `;
+            content.appendChild(table);
+        }
+
+        content.scrollTop = content.scrollHeight;
+    }
+
+    function showComparison(progressMsg, result) {
+        if (result.error) {
+            progressMsg.className = 'message msg-error';
+            progressMsg.innerText = '❌ ' + result.error;
+            return;
+        }
+
+        progressMsg.remove();
+        msg(`✅ <strong>Depth Comparison Complete</strong><br>Keyword: <strong>${result.keyword}</strong><br>Total depths analyzed: <strong>${result.total_depths}</strong>`, 'agent');
+
+        const grid = document.createElement('div');
+        grid.className = 'depth-grid';
+
+        result.comparison.forEach(row => {
+            const div = document.createElement('div');
+            div.className = 'depth-row';
+
+            if (!row.stable_exists && !row.broken_exists) {
+                // Both missing — skip
+                return;
+            }
+
+            if (!row.stable_exists || !row.broken_exists) {
+                div.classList.add('missing');
+            } else if (row.match) {
+                div.classList.add('match');
+            } else {
+                div.classList.add('partial');
+            }
+
+            const status = !row.stable_exists ? '🔴 Missing in Stable' 
+                         : !row.broken_exists ? '🟡 Missing in Broken'
+                         : row.match ? '✅ Match'
+                         : '⚠️ Different';
+
+            div.innerHTML = `
+                <div class="depth-header">📍 Depth ${row.depth} — ${status}</div>
+                <div class="depth-content">
+                    <div class="depth-column">
+                        <h4>🟢 Stable (Working)</h4>
+                        <pre>${row.stable_exists ? row.stable_lines.join('\n') : '(missing)'}</pre>
+                    </div>
+                    <div class="depth-column">
+                        <h4>🔴 Broken (Defective)</h4>
+                        <pre>${row.broken_exists ? row.broken_lines.join('\n') : '(missing)'}</pre>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(div);
+        });
+
+        content.appendChild(grid);
+        content.scrollTop = content.scrollHeight;
+    }
+
+    // Init
+    async function init() {
+        try {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `${API}/`, true);
+            xhr.onload = () => {
+                if (xhr.status === 200) {
+                    dot.classList.add('live');
+                    status.innerText = 'Connected ✓';
+                }
+            };
+            xhr.onerror = () => {
+                dot.style.background = '#f87171';
+                status.innerText = 'API Unreachable';
+            };
+            xhr.send();
+        } catch { }
+        greeting();
+    }
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            send.click();
+        }
+    });
+
+    init();
+</script>
+</body>
+</html>
