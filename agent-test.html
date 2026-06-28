@@ -374,7 +374,8 @@
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', url, true);
-            xhr.timeout = 30000;  // 30 second timeout
+            // Performance checks need more time for large files
+            xhr.timeout = url.includes('/performance') ? 120000 : 60000;  // 120s for performance, 60s for others
             
             xhr.onload = () => {
                 if (xhr.status >= 200 && xhr.status < 300) {
