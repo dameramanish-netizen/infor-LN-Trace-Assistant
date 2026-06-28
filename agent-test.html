@@ -686,54 +686,68 @@
         }
 
         progressMsg.remove();
-        msg(`✅ <strong>Performance Analysis Complete</strong><br>Scanned ${result.scanned_lines.toLocaleString()} lines<br><strong>${result.slow_calls_found}</strong> slow functions found (>10ms):`, 'agent');
+        
+        if (!result.slow_calls_found || result.slow_calls_found === 0) {
+            msg(`✅ <strong>Performance Analysis Complete</strong><br>No slow calls found (all functions < 10ms)`, 'agent');
+            return;
+        }
 
-        // Top slowest table
+        msg(`✅ <strong>Performance Analysis Complete</strong><br><strong>${result.slow_calls_found}</strong> slow functions found (>10ms):`, 'agent');
+
+        // Top 5 Slowest
         if (result.top_slowest && result.top_slowest.length > 0) {
-            msg('<strong>⏱️ TOP 15 SLOWEST FUNCTIONS:</strong>', 'agent');
+            msg('<strong>⏱️ TOP 5 SLOWEST FUNCTIONS:</strong>', 'agent');
             const table = document.createElement('table');
             table.className = 'perf-table';
             table.innerHTML = `
                 <tr>
                     <th>Function</th>
-                    <th>Table</th>
                     <th>Duration (ms)</th>
-                    <th>Object</th>
+                    <th>Process ID</th>
+                    <th>Depth</th>
                 </tr>
                 ${result.top_slowest.map(r => `
                     <tr>
-                        <td>${r.FunctionName || 'N/A'}</td>
-                        <td>${r.TableName || 'N/A'}</td>
-                        <td>${r.Duration_MS}</td>
-                        <td>${r.ExecutingObject || 'N/A'}</td>
+                        <td>${r.function || 'N/A'}</td>
+                        <td><strong>${r.duration_ms}</strong></td>
+                        <td>${r.process_id || 'N/A'}</td>
+                        <td>${r.depth || 'N/A'}</td>
                     </tr>
                 `).join('')}
             `;
             content.appendChild(table);
         }
 
-        // Bottleneck table
-        if (result.bottlenecks && result.bottlenecks.length > 0) {
-            msg('<strong>💥 TOP 15 BOTTLENECKS (BY TOTAL TIME):</strong>', 'agent');
+        // Top 5 Most Time Consuming
+        if (result.most_time_consuming && result.most_time_consuming.length > 0) {
+            msg('<strong>💥 TOP 5 MOST TIME-CONSUMING (COLLECTIVELY):</strong>', 'agent');
             const table = document.createElement('table');
             table.className = 'perf-table';
             table.innerHTML = `
                 <tr>
                     <th>Function</th>
-                    <th>Table</th>
-                    <th>Total (ms)</th>
-                    <th>Count</th>
+                    <th>Total Time (ms)</th>
+                    <th>Calls</th>
+                    <th>Avg (ms)</th>
+                    <th>Max (ms)</th>
                 </tr>
-                ${result.bottlenecks.map(r => `
+                ${result.most_time_consuming.map(r => `
                     <tr>
-                        <td>${r.FunctionName}</td>
-                        <td>${r.TableName}</td>
-                        <td>${r.Total_Duration.toFixed(2)}</td>
-                        <td>${r.Executions}</td>
+                        <td>${r.function || 'N/A'}</td>
+                        <td><strong>${r.total_ms}</strong></td>
+                        <td>${r.count}</td>
+                        <td>${r.avg_ms}</td>
+                        <td>${r.max_ms}</td>
                     </tr>
                 `).join('')}
             `;
             content.appendChild(table);
+        }
+
+        // Slowest Recommendation
+        if (result.slowest_recommendation) {
+            const rec = result.slowest_recommendation;
+            msg(`🎯 <strong>RECOMMENDATION:</strong> Optimize <strong>"${rec.function}"</strong> — slowest call at <strong>${rec.duration_ms}ms</strong> (depth ${rec.depth}, process ${rec.process_id})`, 'agent');
         }
 
         content.scrollTop = content.scrollHeight;
@@ -825,4 +839,3 @@
 </script>
 </body>
 </html>
-
