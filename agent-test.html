@@ -408,6 +408,20 @@
         const text = input.value.trim();
         const files = fileInput.files;
 
+        // Handle custom keyword input
+        if (state.step === 'waiting_custom_keyword') {
+            if (!text) {
+                msg('Please type a keyword first.', 'agent');
+                return;
+            }
+            msg(text, 'user');
+            state.keyword = text;
+            input.value = '';
+            input.placeholder = 'Type here...';
+            await step3(files);
+            return;
+        }
+
         if (state.step === 1) {
             // Step 1: Need files
             if (files.length === 0) {
@@ -425,7 +439,7 @@
         if (state.step === 2) {
             // Step 2: Need keyword or performance
             if (!text) {
-                msg('Please enter a keyword or "performance".', 'agent');
+                msg('Please select an option above or type a custom keyword.', 'agent');
                 return;
             }
             state.keyword = text;
@@ -459,9 +473,104 @@
     function step2() {
         state.step = 2;
         if (state.fileCount === 1) {
-            msg('Now, <strong>enter the keyword you want to search</strong> or enter <strong>"performance"</strong> to find slow functions.');
+            msg('Now, <strong>enter the keyword you want to search</strong> or find slow functions:');
+            
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'quick-actions';
+            
+            // Common keywords
+            const keywords = [
+                'dal.handle.field.error',
+                '__dal.set.message',
+                'form.text$',
+                'spool.open'
+            ];
+            
+            keywords.forEach(kw => {
+                const btn = document.createElement('button');
+                btn.className = 'qbtn';
+                btn.innerText = `🔍 ${kw}`;
+                btn.onclick = () => {
+                    msg(kw, 'user');
+                    state.keyword = kw;
+                    input.value = '';
+                    step3(fileInput.files);
+                };
+                btnContainer.appendChild(btn);
+            });
+            
+            // Performance button
+            const perfBtn = document.createElement('button');
+            perfBtn.className = 'qbtn';
+            perfBtn.style.backgroundColor = '#1f3a2f';
+            perfBtn.style.borderColor = '#10b981';
+            perfBtn.style.color = '#10b981';
+            perfBtn.innerText = '⏱️ Performance';
+            perfBtn.onclick = () => {
+                msg('Performance', 'user');
+                state.keyword = 'performance';
+                input.value = '';
+                step3(fileInput.files);
+            };
+            btnContainer.appendChild(perfBtn);
+            
+            // Type custom button
+            const customBtn = document.createElement('button');
+            customBtn.className = 'qbtn';
+            customBtn.style.backgroundColor = '#1e3a5f';
+            customBtn.style.borderColor = '#38bdf8';
+            customBtn.style.color = '#38bdf8';
+            customBtn.innerText = '✏️ Type custom keyword';
+            customBtn.onclick = () => {
+                msg('Type custom keyword', 'user');
+                input.placeholder = 'Enter your keyword here...';
+                input.focus();
+                state.step = 'waiting_custom_keyword';
+            };
+            btnContainer.appendChild(customBtn);
+            
+            content.appendChild(btnContainer);
+            content.scrollTop = content.scrollHeight;
         } else {
-            msg('Now, <strong>enter the keyword</strong> to check the next depths of the keyword from calling to returning.');
+            msg('Now, <strong>enter the keyword</strong> to check the next depths of the keyword from calling to returning:');
+            
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'quick-actions';
+            
+            const keywords = [
+                'dal.handle.field.error',
+                '__dal.set.message',
+                'form.text$',
+                'spool.open'
+            ];
+            
+            keywords.forEach(kw => {
+                const btn = document.createElement('button');
+                btn.className = 'qbtn';
+                btn.innerText = `🔍 ${kw}`;
+                btn.onclick = () => {
+                    msg(kw, 'user');
+                    state.keyword = kw;
+                    input.value = '';
+                    step3(fileInput.files);
+                };
+                btnContainer.appendChild(btn);
+            });
+            
+            const customBtn = document.createElement('button');
+            customBtn.className = 'qbtn';
+            customBtn.style.backgroundColor = '#1e3a5f';
+            customBtn.innerText = '✏️ Type custom keyword';
+            customBtn.onclick = () => {
+                msg('Type custom keyword', 'user');
+                input.placeholder = 'Enter your keyword here...';
+                input.focus();
+                state.step = 'waiting_custom_keyword';
+            };
+            btnContainer.appendChild(customBtn);
+            
+            content.appendChild(btnContainer);
+            content.scrollTop = content.scrollHeight;
         }
     }
 
