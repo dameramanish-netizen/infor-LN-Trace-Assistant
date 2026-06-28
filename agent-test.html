@@ -619,7 +619,11 @@
             return;
         }
 
-        progressMsg.remove();
+        // Save for back button
+        window.lastOccurrences = result.occurrences;
+        window.lastKeyword = result.keyword;
+
+        if (progressMsg) progressMsg.remove();
         msg(`✅ Found <strong>${result.total_occurrences}</strong> occurrence(s) of "<strong>${result.keyword}</strong>"<br>Click on any to see the full call stack:`, 'agent');
 
         const list = document.createElement('div');
@@ -639,16 +643,39 @@
     }
 
     function showStack(occId, context) {
+        // Clear the occurrences list to give stack more space
+        const occList = document.querySelector('.occurrences-list');
+        if (occList) occList.remove();
+
         // Remove old stack if exists
         const old = document.getElementById('stack-view');
         if (old) old.remove();
 
+        // Show back button to return to occurrences
+        const backMsg = msg('Click "Back to Occurrences" below to see the list again.', 'agent');
+        backMsg.style.fontSize = '11px';
+        backMsg.style.marginTop = '-10px';
+
         const div = document.createElement('div');
         div.id = 'stack-view';
         div.className = 'stack-view';
+        div.style.minHeight = '600px';
         div.innerText = context || 'Loading...';
         content.appendChild(div);
-        content.scrollTop = content.scrollHeight;
+
+        // Add back button
+        const backBtn = document.createElement('button');
+        backBtn.className = 'qbtn';
+        backBtn.style.marginTop = '12px';
+        backBtn.innerText = '← Back to Occurrences';
+        backBtn.onclick = () => {
+            backMsg.remove();
+            div.remove();
+            backBtn.remove();
+            showOccurrences(null, { occurrences: window.lastOccurrences, total_occurrences: window.lastOccurrences.length, keyword: window.lastKeyword });
+        };
+        content.appendChild(backBtn);
+        content.scrollTop = 0;
     }
 
     function showPerformance(progressMsg, result) {
