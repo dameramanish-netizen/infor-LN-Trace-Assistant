@@ -423,6 +423,12 @@
             return;
         }
 
+        // Ask which file is success (for 2-file comparison)
+        if (state.step === '1b') {
+            msg('Please select which file is the success case.', 'agent');
+            return;
+        }
+
         if (state.step === 1) {
             // Step 1: Need files
             if (files.length === 0) {
@@ -433,12 +439,18 @@
             state.files = Array.from(files);
             msg(`📁 File(s) attached: ${state.fileCount}`, 'user');
             input.value = '';
-            step2();
+            
+            // If 2 files, ask which is success
+            if (state.fileCount === 2) {
+                step1b();
+            } else {
+                step2();
+            }
             return;
         }
 
         if (state.step === 2) {
-            // Step 2: Need keyword or performance
+            // Step 2: Need keyword (or handle comparison setup)
             if (!text) {
                 msg('Please select an option above or type a custom keyword.', 'agent');
                 return;
@@ -461,7 +473,7 @@
         }
 
         // Default: restart
-        state = { step: 1, files: [], fileCount: 0, keyword: null };
+        state = { step: 1, files: [], fileCount: 0, keyword: null, successFileIndex: null };
         greeting();
     });
 
@@ -471,9 +483,89 @@
         msg('👋 Hi, I\'m the <strong>Infor LN Trace Assistant</strong><br>Please provide a file to analyze further.');
     }
 
+    function step1b() {
+        // After uploading 2 files, ask which is success
+        state.step = '1b';
+        msg('You uploaded <strong>2 files</strong>. Which one is the <strong>success case</strong>?', 'agent');
+        
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'quick-actions';
+        
+        const file1Name = state.files[0]?.name || 'File 1';
+        const file2Name = state.files[1]?.name || 'File 2';
+        
+        const btn1 = document.createElement('button');
+        btn1.className = 'qbtn';
+        btn1.style.backgroundColor = '#1f3a2f';
+        btn1.style.borderColor = '#10b981';
+        btn1.innerText = `✅ ${file1Name}`;
+        btn1.onclick = () => {
+            msg(`Success: ${file1Name}`, 'user');
+            state.successFileIndex = 0;
+            step2();
+        };
+        btnContainer.appendChild(btn1);
+        
+        const btn2 = document.createElement('button');
+        btn2.className = 'qbtn';
+        btn2.style.backgroundColor = '#1f3a2f';
+        btn2.style.borderColor = '#10b981';
+        btn2.innerText = `✅ ${file2Name}`;
+        btn2.onclick = () => {
+            msg(`Success: ${file2Name}`, 'user');
+            state.successFileIndex = 1;
+            step2();
+        };
+        btnContainer.appendChild(btn2);
+        
+        content.appendChild(btnContainer);
+        content.scrollTop = content.scrollHeight;
+    }
+
     function step2() {
         state.step = 2;
-        if (state.fileCount === 1) {
+        if (state.fileCount === 2) {
+            msg('Now, <strong>enter the keyword</strong> to compare across both trace files:');
+            
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'quick-actions';
+            
+            const keywords = [
+                'dal.handle.field.error',
+                '__dal.set.message',
+                'form.text$',
+                'spool.open'
+            ];
+            
+            keywords.forEach(kw => {
+                const btn = document.createElement('button');
+                btn.className = 'qbtn';
+                btn.innerText = `🔍 ${kw}`;
+                btn.onclick = () => {
+                    msg(kw, 'user');
+                    state.keyword = kw;
+                    input.value = '';
+                    step3(fileInput.files);
+                };
+                btnContainer.appendChild(btn);
+            });
+            
+            const customBtn = document.createElement('button');
+            customBtn.className = 'qbtn';
+            customBtn.style.backgroundColor = '#1e3a5f';
+            customBtn.style.borderColor = '#38bdf8';
+            customBtn.innerText = '✏️ Type custom keyword';
+            customBtn.onclick = () => {
+                msg('Type custom keyword', 'user');
+                input.placeholder = 'Enter your keyword here...';
+                input.focus();
+                state.step = 'waiting_custom_keyword';
+            };
+            btnContainer.appendChild(customBtn);
+            
+            content.appendChild(btnContainer);
+            content.scrollTop = content.scrollHeight;
+        } else if (state.fileCount === 1) {
             msg('Now, <strong>enter the keyword you want to search</strong> or find slow functions:');
             
             const btnContainer = document.createElement('div');
@@ -597,11 +689,15 @@
                     result = await xhrPost(`${API}/api/debug`, fd);
                     showOccurrences(progressMsg, result);
                 }
-            } else {
+            } else if (state.fileCount === 2) {
                 // Dual file comparison
+                // Arrange files: success file first, broken file second
+                const successFile = state.files[state.successFileIndex];
+                const brokenFile = state.files[state.successFileIndex === 0 ? 1 : 0];
+                
                 const fd = new FormData();
-                fd.append('file1', files[0]);
-                fd.append('file2', files[1]);
+                fd.append('file1', successFile);
+                fd.append('file2', brokenFile);
                 fd.append('keyword', state.keyword);
                 result = await xhrPost(`${API}/api/compare`, fd);
                 showComparison(progressMsg, result);
