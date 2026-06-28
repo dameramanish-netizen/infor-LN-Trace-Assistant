@@ -718,23 +718,20 @@
             return;
         }
 
-        // Save all occurrences for pagination
-        window.lastOccurrences = result.all_occurrences || result.occurrences;
+        // Save for back button
+        window.lastOccurrences = result.occurrences;
         window.lastKeyword = result.keyword;
-        window.currentPage = 1;
 
         if (progressMsg) progressMsg.remove();
         
-        const pageInfo = result.has_more ? 
-            `<br><small>Showing page 1 of ${result.total_pages}</small>` : '';
+        const moreText = result.has_more ? 
+            `<br><small>(showing first 100 of ${result.total_occurrences}, refine search for more)</small>` : '';
         
-        msg(`✅ Found <strong>${result.total_occurrences}</strong> occurrence(s) of "<strong>${result.keyword}</strong>"<br>Click on any to see the full call stack:${pageInfo}`, 'agent');
+        msg(`✅ Found <strong>${result.total_occurrences}</strong> occurrence(s) of "<strong>${result.keyword}</strong>"<br>Click on any to see the full call stack:${moreText}`, 'agent');
 
         const list = document.createElement('div');
         list.className = 'occurrences-list';
-        list.id = 'occurrences-list';
 
-        // Show only first 100
         result.occurrences.forEach(occ => {
             const btn = document.createElement('button');
             btn.className = 'occurrence-btn';
@@ -746,55 +743,6 @@
         });
 
         content.appendChild(list);
-
-        // Add "Load More" button if there are more
-        if (result.has_more) {
-            const loadMoreBtn = document.createElement('button');
-            loadMoreBtn.className = 'qbtn';
-            loadMoreBtn.style.marginTop = '16px';
-            loadMoreBtn.style.backgroundColor = '#1f3a2f';
-            loadMoreBtn.style.borderColor = '#38bdf8';
-            loadMoreBtn.innerText = `📥 Load Next ${Math.min(100, result.total_occurrences - 100)} occurrences`;
-            loadMoreBtn.onclick = () => loadMoreOccurrences(result, loadMoreBtn);
-            content.appendChild(loadMoreBtn);
-        }
-
-        content.scrollTop = content.scrollHeight;
-    }
-
-    function loadMoreOccurrences(initialResult, loadBtn) {
-        window.currentPage = (window.currentPage || 1) + 1;
-        const startIdx = (window.currentPage - 1) * 100;
-        const endIdx = Math.min(startIdx + 100, window.lastOccurrences.length);
-        
-        const nextBatch = window.lastOccurrences.slice(startIdx, endIdx);
-        
-        const list = document.getElementById('occurrences-list');
-        
-        nextBatch.forEach(occ => {
-            const btn = document.createElement('button');
-            btn.className = 'occurrence-btn';
-            btn.innerText = `[Line ${occ.line_number}] ${occ.matched_text}`;
-            btn.title = occ.matched_text;
-            btn.dataset.id = occ.id;
-            btn.onclick = () => showStack(occ.id, occ.stack_context);
-            list.appendChild(btn);
-        });
-
-        // Show page info
-        const totalPages = Math.ceil(window.lastOccurrences.length / 100);
-        const pageMsg = msg(`📄 Page ${window.currentPage} of ${totalPages}`, 'agent');
-        pageMsg.style.fontSize = '11px';
-        pageMsg.style.marginTop = '-8px';
-
-        // Remove or update load more button
-        if (endIdx >= window.lastOccurrences.length) {
-            loadBtn.remove();
-            msg('✅ All occurrences loaded!', 'agent');
-        } else {
-            loadBtn.innerText = `📥 Load Next ${Math.min(100, window.lastOccurrences.length - endIdx)} occurrences`;
-        }
-
         content.scrollTop = content.scrollHeight;
     }
 
