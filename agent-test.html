@@ -347,12 +347,16 @@
     const status = document.getElementById('status');
 
     let state = {
-        step: 1,  // 1=greeting, 2=keyword/performance, 3=results
+        step: 1,  
         files: [],
         fileCount: 0,
         keyword: null,
-        selectedOccurrenceId: null
+        successFileIndex: null
     };
+
+    // Global in-memory storage blocks to persist state across pagination handshakes
+    window.allLinesCache = [];
+    window.allParsedLinesCache = [];
 
     function msg(text, type = 'agent') {
         const div = document.createElement('div');
@@ -378,8 +382,7 @@
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', url, true);
-            // 8GB .gz files need significant time: upload + decompress + parse
-            xhr.timeout = 900000;  // 15 minutes for all operations
+            xhr.timeout = 900000;  
             
             xhr.onload = () => {
                 if (xhr.status >= 200 && xhr.status < 300) {
@@ -403,16 +406,13 @@
 
     fileInput.addEventListener('change', (e) => {
         const c = e.target.files.length;
-        fileName.innerText = c === 1 
-            ? `📄 ${e.target.files[0].name}` 
-            : c > 1 ? `📄 ${c} files` : '';
+        fileName.innerText = c === 1 ? `📄 ${e.target.files[0].name}` : c > 1 ? `📄 ${c} files` : '';
     });
 
     send.addEventListener('click', async () => {
         const text = input.value.trim();
         const files = fileInput.files;
 
-        // Handle custom keyword input
         if (state.step === 'waiting_custom_keyword') {
             if (!text) {
                 msg('Please type a keyword first.', 'agent');
@@ -426,14 +426,12 @@
             return;
         }
 
-        // Ask which file is success (for 2-file comparison)
         if (state.step === '1b') {
             msg('Please select which file is the success case.', 'agent');
             return;
         }
 
         if (state.step === 1) {
-            // Step 1: Need files
             if (files.length === 0) {
                 msg('Please attach a file first.', 'agent');
                 return;
@@ -443,7 +441,6 @@
             msg(`📁 File(s) attached: ${state.fileCount}`, 'user');
             input.value = '';
             
-            // If 2 files, ask which is success
             if (state.fileCount === 2) {
                 step1b();
             } else {
@@ -453,7 +450,6 @@
         }
 
         if (state.step === 2) {
-            // Step 2: Need keyword (or handle comparison setup)
             if (!text) {
                 msg('Please select an option above or type a custom keyword.', 'agent');
                 return;
@@ -465,17 +461,19 @@
             return;
         }
 
-        if (state.step === 3 && state.fileCount === 1 && !text.toLowerCase().includes('performance')) {
-            // Showing occurrences — user clicked one or wants another search
+        if (state.step === 3 && state.fileCount === 1 && !state.keyword.toLowerCase().includes('performance')) {
             const occId = parseInt(text);
             if (!isNaN(occId)) {
-                showStack(occId);
+                // Safely query context from stored lookup index parameters
+                const targetIdx = occId - 1;
+                if(window.allParsedLinesCache[targetIdx]) {
+                    loadStackOnDemand(targetIdx, window.allParsedLinesCache[targetIdx].line_number);
+                }
                 input.value = '';
                 return;
             }
         }
 
-        // Default: restart
         state = { step: 1, files: [], fileCount: 0, keyword: null, successFileIndex: null };
         greeting();
     });
@@ -487,7 +485,6 @@
     }
 
     function step1b() {
-        // After uploading 2 files, ask which is success
         state.step = '1b';
         msg('You uploaded <strong>2 files</strong>. Which one is the <strong>success case</strong>?', 'agent');
         
@@ -527,19 +524,12 @@
 
     function step2() {
         state.step = 2;
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'quick-actions';
+        const keywords = ['dal.handle.field.error', '__dal.set.message', 'form.text$', 'spool.open'];
+
         if (state.fileCount === 2) {
             msg('Now, <strong>enter the keyword</strong> to compare across both trace files:');
-            
-            const btnContainer = document.createElement('div');
-            btnContainer.className = 'quick-actions';
-            
-            const keywords = [
-                'dal.handle.field.error',
-                '__dal.set.message',
-                'form.text$',
-                'spool.open'
-            ];
-            
             keywords.forEach(kw => {
                 const btn = document.createElement('button');
                 btn.className = 'qbtn';
@@ -552,36 +542,8 @@
                 };
                 btnContainer.appendChild(btn);
             });
-            
-            const customBtn = document.createElement('button');
-            customBtn.className = 'qbtn';
-            customBtn.style.backgroundColor = '#1e3a5f';
-            customBtn.style.borderColor = '#38bdf8';
-            customBtn.innerText = '✏️ Type custom keyword';
-            customBtn.onclick = () => {
-                msg('Type custom keyword', 'user');
-                input.placeholder = 'Enter your keyword here...';
-                input.focus();
-                state.step = 'waiting_custom_keyword';
-            };
-            btnContainer.appendChild(customBtn);
-            
-            content.appendChild(btnContainer);
-            content.scrollTop = content.scrollHeight;
-        } else if (state.fileCount === 1) {
+        } else {
             msg('Now, <strong>enter the keyword you want to search</strong> or find slow functions:');
-            
-            const btnContainer = document.createElement('div');
-            btnContainer.className = 'quick-actions';
-            
-            // Common keywords
-            const keywords = [
-                'dal.handle.field.error',
-                '__dal.set.message',
-                'form.text$',
-                'spool.open'
-            ];
-            
             keywords.forEach(kw => {
                 const btn = document.createElement('button');
                 btn.className = 'qbtn';
@@ -595,7 +557,6 @@
                 btnContainer.appendChild(btn);
             });
             
-            // Performance button
             const perfBtn = document.createElement('button');
             perfBtn.className = 'qbtn';
             perfBtn.style.backgroundColor = '#1f3a2f';
@@ -609,65 +570,24 @@
                 step3(fileInput.files);
             };
             btnContainer.appendChild(perfBtn);
-            
-            // Type custom button
-            const customBtn = document.createElement('button');
-            customBtn.className = 'qbtn';
-            customBtn.style.backgroundColor = '#1e3a5f';
-            customBtn.style.borderColor = '#38bdf8';
-            customBtn.style.color = '#38bdf8';
-            customBtn.innerText = '✏️ Type custom keyword';
-            customBtn.onclick = () => {
-                msg('Type custom keyword', 'user');
-                input.placeholder = 'Enter your keyword here...';
-                input.focus();
-                state.step = 'waiting_custom_keyword';
-            };
-            btnContainer.appendChild(customBtn);
-            
-            content.appendChild(btnContainer);
-            content.scrollTop = content.scrollHeight;
-        } else {
-            msg('Now, <strong>enter the keyword</strong> to check the next depths of the keyword from calling to returning:');
-            
-            const btnContainer = document.createElement('div');
-            btnContainer.className = 'quick-actions';
-            
-            const keywords = [
-                'dal.handle.field.error',
-                '__dal.set.message',
-                'form.text$',
-                'spool.open'
-            ];
-            
-            keywords.forEach(kw => {
-                const btn = document.createElement('button');
-                btn.className = 'qbtn';
-                btn.innerText = `🔍 ${kw}`;
-                btn.onclick = () => {
-                    msg(kw, 'user');
-                    state.keyword = kw;
-                    input.value = '';
-                    step3(fileInput.files);
-                };
-                btnContainer.appendChild(btn);
-            });
-            
-            const customBtn = document.createElement('button');
-            customBtn.className = 'qbtn';
-            customBtn.style.backgroundColor = '#1e3a5f';
-            customBtn.innerText = '✏️ Type custom keyword';
-            customBtn.onclick = () => {
-                msg('Type custom keyword', 'user');
-                input.placeholder = 'Enter your keyword here...';
-                input.focus();
-                state.step = 'waiting_custom_keyword';
-            };
-            btnContainer.appendChild(customBtn);
-            
-            content.appendChild(btnContainer);
-            content.scrollTop = content.scrollHeight;
         }
+        
+        const customBtn = document.createElement('button');
+        customBtn.className = 'qbtn';
+        customBtn.style.backgroundColor = '#1e3a5f';
+        customBtn.style.borderColor = '#38bdf8';
+        customBtn.style.color = '#38bdf8';
+        customBtn.innerText = '✏️ Type custom keyword';
+        customBtn.onclick = () => {
+            msg('Type custom keyword', 'user');
+            input.placeholder = 'Enter your keyword here...';
+            input.focus();
+            state.step = 'waiting_custom_keyword';
+        };
+        btnContainer.appendChild(customBtn);
+        
+        content.appendChild(btnContainer);
+        content.scrollTop = content.scrollHeight;
     }
 
     async function step3(files) {
@@ -676,16 +596,13 @@
 
         try {
             let result;
-
             if (state.fileCount === 1) {
                 if (state.keyword.toLowerCase() === 'performance') {
-                    // Performance check
                     const fd = new FormData();
                     fd.append('file', files[0]);
                     result = await xhrPost(`${API}/api/performance`, fd);
                     showPerformance(progressMsg, result);
                 } else {
-                    // Trace debugger
                     const fd = new FormData();
                     fd.append('file', files[0]);
                     fd.append('keyword', state.keyword);
@@ -693,8 +610,6 @@
                     showOccurrences(progressMsg, result);
                 }
             } else if (state.fileCount === 2) {
-                // Dual file comparison
-                // Arrange files: success file first, broken file second
                 const successFile = state.files[state.successFileIndex];
                 const brokenFile = state.files[state.successFileIndex === 0 ? 1 : 0];
                 
@@ -718,16 +633,17 @@
             return;
         }
 
-        // Save for pagination
+        // Cache file content signatures inside memory variables to fuel back-handshakes
         window.lastKeyword = result.keyword;
         window.nextPageStart = result.next_page_start;
         window.hasMore = result.has_more;
+        window.lastOccurrences = result.occurrences;
+        window.allLinesCache = result.all_lines || [];
+        window.allParsedLinesCache = result.all_parsed_lines || [];
 
         if (progressMsg) progressMsg.remove();
         
-        const moreText = result.has_more ? 
-            `<br><small>(showing first 100 of ${result.total_occurrences})</small>` : '';
-        
+        const moreText = result.has_more ? `<br><small>(showing first 100 of ${result.total_occurrences})</small>` : '';
         msg(`✅ Found <strong>${result.total_occurrences}</strong> occurrence(s) of "<strong>${result.keyword}</strong>"<br>Click on any to see the full call stack:${moreText}`, 'agent');
 
         const list = document.createElement('div');
@@ -739,15 +655,12 @@
             btn.className = 'occurrence-btn';
             btn.innerText = `[Line ${occ.line_number}] ${occ.matched_text}`;
             btn.title = occ.matched_text;
-            btn.dataset.id = occ.id;
-            btn.dataset.occIndex = occ.id - 1;  // Store index for API call
             btn.onclick = () => loadStackOnDemand(occ.id - 1, occ.line_number);
             list.appendChild(btn);
         });
 
         content.appendChild(list);
 
-        // Add "Load More" button if there are more
         if (result.has_more && result.next_page_start !== null) {
             const loadMoreBtn = document.createElement('button');
             loadMoreBtn.className = 'qbtn';
@@ -760,42 +673,51 @@
             loadMoreBtn.onclick = () => loadMoreOccurrences(loadMoreBtn);
             content.appendChild(loadMoreBtn);
         }
-
         content.scrollTop = content.scrollHeight;
     }
 
     function loadStackOnDemand(occIndex, lineNumber) {
-        // Show loading message
         const loadingMsg = msg(`⚡ Loading stack for [Line ${lineNumber}]...`, 'agent');
         loadingMsg.style.fontSize = '12px';
         
-        // Fetch stack from API
-        fetch(`${API}/api/debug/stack/${occIndex}`)
-            .then(r => r.json())
-            .then(result => {
-                loadingMsg.remove();
-                if (result.error) {
-                    msg(`❌ ${result.error}`, 'agent');
-                } else {
-                    showStack(result.occurrence_id, result.stack_context);
-                }
+        const targetOccurrence = window.allParsedLinesCache[occIndex];
+
+        // FIXED: Dispatches a standard POST request carrying json objects to match Python specs
+        fetch(`${API}/api/debug/stack/${occIndex}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                occurrence: targetOccurrence,
+                all_lines: window.allLinesCache
             })
-            .catch(err => {
-                loadingMsg.remove();
-                msg(`❌ Error loading stack: ${err.message}`, 'agent');
-            });
+        })
+        .then(r => r.json())
+        .then(result => {
+            loadingMsg.remove();
+            if (result.error) {
+                msg(`❌ ${result.error}`, 'agent');
+            } else {
+                showStack(result.occurrence_id, result.stack_context);
+            }
+        })
+        .catch(err => {
+            loadingMsg.remove();
+            msg(`❌ Error loading stack: ${err.message}`, 'agent');
+        });
     }
 
     function loadMoreOccurrences(loadBtn) {
         loadBtn.innerText = '⏳ Loading...';
         loadBtn.disabled = true;
         
-        const formData = new FormData();
-        formData.append('page_start', window.nextPageStart || 100);
-        
+        // FIXED: Routes array data values straight via JSON payload bodies
         fetch(`${API}/api/debug/load-more`, {
             method: 'POST',
-            body: formData
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                page_start: window.nextPageStart || 100,
+                all_parsed_lines: window.allParsedLinesCache
+            })
         })
         .then(r => r.json())
         .then(result => {
@@ -807,23 +729,20 @@
             
             const list = document.getElementById('occurrences-list');
             
-            // Add new occurrences to list
             result.occurrences.forEach(occ => {
                 const btn = document.createElement('button');
                 btn.className = 'occurrence-btn';
                 btn.innerText = `[Line ${occ.line_number}] ${occ.matched_text}`;
                 btn.title = occ.matched_text;
-                btn.dataset.id = occ.id;
-                btn.dataset.occIndex = occ.id - 1;
                 btn.onclick = () => loadStackOnDemand(occ.id - 1, occ.line_number);
                 list.appendChild(btn);
             });
             
-            // Update pagination state
+            // Append newly parsed elements to current view states memory
+            window.lastOccurrences = window.lastOccurrences.concat(result.occurrences);
             window.nextPageStart = result.next_page_start;
             window.hasMore = result.has_more;
             
-            // Update or remove Load More button
             if (result.has_more && result.next_page_start !== null) {
                 loadBtn.innerText = `📥 Load Next 100 Occurrences`;
                 loadBtn.disabled = false;
@@ -831,7 +750,6 @@
                 msg('✅ All occurrences loaded!', 'agent');
                 loadBtn.remove();
             }
-            
             content.scrollTop = content.scrollHeight;
         })
         .catch(err => {
@@ -842,15 +760,14 @@
     }
 
     function showStack(occId, context) {
-        // Clear the occurrences list to give stack more space
-        const occList = document.querySelector('.occurrences-list');
+        const occList = document.getElementById('occurrences-list');
         if (occList) occList.remove();
+        const lmBtn = document.getElementById('load-more-btn');
+        if (lmBtn) lmBtn.remove();
 
-        // Remove old stack if exists
         const old = document.getElementById('stack-view');
         if (old) old.remove();
 
-        // Show back button to return to occurrences
         const backMsg = msg('Click "Back to Occurrences" below to see the list again.', 'agent');
         backMsg.style.fontSize = '11px';
         backMsg.style.marginTop = '-10px';
@@ -862,7 +779,6 @@
         div.innerText = context || 'Loading...';
         content.appendChild(div);
 
-        // Add back button
         const backBtn = document.createElement('button');
         backBtn.className = 'qbtn';
         backBtn.style.marginTop = '12px';
@@ -871,7 +787,14 @@
             backMsg.remove();
             div.remove();
             backBtn.remove();
-            showOccurrences(null, { occurrences: window.lastOccurrences, total_occurrences: window.lastOccurrences.length, keyword: window.lastKeyword });
+            // Re-instantiate view passing structured cached variables array blocks
+            showOccurrences(null, { 
+                occurrences: window.lastOccurrences, 
+                total_occurrences: window.allParsedLinesCache.length, 
+                keyword: window.lastKeyword,
+                has_more: window.hasMore,
+                next_page_start: window.nextPageStart
+            });
         };
         content.appendChild(backBtn);
         content.scrollTop = 0;
@@ -893,9 +816,8 @@
 
         msg(`✅ <strong>Performance Analysis Complete</strong><br><strong>${result.slow_calls_found}</strong> slow functions found (>10ms):`, 'agent');
 
-        // Top 5 Slowest
         if (result.top_slowest && result.top_slowest.length > 0) {
-            msg('<strong>⏱️ TOP 5 SLOWEST FUNCTIONS:</strong>', 'agent');
+            msg('<strong>⏱️ TOP 15 SLOWEST FUNCTIONS:</strong>', 'agent');
             const table = document.createElement('table');
             table.className = 'perf-table';
             table.innerHTML = `
@@ -917,9 +839,8 @@
             content.appendChild(table);
         }
 
-        // Top 5 Most Time Consuming
         if (result.most_time_consuming && result.most_time_consuming.length > 0) {
-            msg('<strong>💥 TOP 5 MOST TIME-CONSUMING (COLLECTIVELY):</strong>', 'agent');
+            msg('<strong>💥 TOP 15 MOST TIME-CONSUMING (COLLECTIVELY):</strong>', 'agent');
             const table = document.createElement('table');
             table.className = 'perf-table';
             table.innerHTML = `
@@ -943,12 +864,6 @@
             content.appendChild(table);
         }
 
-        // Slowest Recommendation
-        if (result.slowest_recommendation) {
-            const rec = result.slowest_recommendation;
-            msg(`🎯 <strong>RECOMMENDATION:</strong> Optimize <strong>"${rec.function}"</strong> — slowest call at <strong>${rec.duration_ms}ms</strong> (depth ${rec.depth}, process ${rec.process_id})`, 'agent');
-        }
-
         content.scrollTop = content.scrollHeight;
     }
 
@@ -969,10 +884,7 @@
             const div = document.createElement('div');
             div.className = 'depth-row';
 
-            if (!row.stable_exists && !row.broken_exists) {
-                // Both missing — skip
-                return;
-            }
+            if (!row.stable_exists && !row.broken_exists) return;
 
             if (!row.stable_exists || !row.broken_exists) {
                 div.classList.add('missing');
@@ -1007,7 +919,6 @@
         content.scrollTop = content.scrollHeight;
     }
 
-    // Init
     async function init() {
         try {
             const xhr = new XMLHttpRequest();
