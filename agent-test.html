@@ -718,19 +718,21 @@
             return;
         }
 
-        // Save for back button
-        window.lastOccurrences = result.occurrences;
+        // Save for pagination
         window.lastKeyword = result.keyword;
+        window.nextPageStart = result.next_page_start;
+        window.hasMore = result.has_more;
 
         if (progressMsg) progressMsg.remove();
         
         const moreText = result.has_more ? 
-            `<br><small>(showing first 100 of ${result.total_occurrences}, refine search for more)</small>` : '';
+            `<br><small>(showing first 100 of ${result.total_occurrences})</small>` : '';
         
         msg(`✅ Found <strong>${result.total_occurrences}</strong> occurrence(s) of "<strong>${result.keyword}</strong>"<br>Click on any to see the full call stack:${moreText}`, 'agent');
 
         const list = document.createElement('div');
         list.className = 'occurrences-list';
+        list.id = 'occurrences-list';
 
         result.occurrences.forEach(occ => {
             const btn = document.createElement('button');
@@ -738,12 +740,105 @@
             btn.innerText = `[Line ${occ.line_number}] ${occ.matched_text}`;
             btn.title = occ.matched_text;
             btn.dataset.id = occ.id;
-            btn.onclick = () => showStack(occ.id, occ.stack_context);
+            btn.dataset.occIndex = occ.id - 1;  // Store index for API call
+            btn.onclick = () => loadStackOnDemand(occ.id - 1, occ.line_number);
             list.appendChild(btn);
         });
 
         content.appendChild(list);
+
+        // Add "Load More" button if there are more
+        if (result.has_more && result.next_page_start !== null) {
+            const loadMoreBtn = document.createElement('button');
+            loadMoreBtn.className = 'qbtn';
+            loadMoreBtn.style.marginTop = '16px';
+            loadMoreBtn.style.backgroundColor = '#1f3a2f';
+            loadMoreBtn.style.borderColor = '#38bdf8';
+            loadMoreBtn.style.color = '#38bdf8';
+            loadMoreBtn.innerText = `📥 Load Next 100 Occurrences`;
+            loadMoreBtn.id = 'load-more-btn';
+            loadMoreBtn.onclick = () => loadMoreOccurrences(loadMoreBtn);
+            content.appendChild(loadMoreBtn);
+        }
+
         content.scrollTop = content.scrollHeight;
+    }
+
+    function loadStackOnDemand(occIndex, lineNumber) {
+        // Show loading message
+        const loadingMsg = msg(`⚡ Loading stack for [Line ${lineNumber}]...`, 'agent');
+        loadingMsg.style.fontSize = '12px';
+        
+        // Fetch stack from API
+        fetch(`${API}/api/debug/stack/${occIndex}`)
+            .then(r => r.json())
+            .then(result => {
+                loadingMsg.remove();
+                if (result.error) {
+                    msg(`❌ ${result.error}`, 'agent');
+                } else {
+                    showStack(result.occurrence_id, result.stack_context);
+                }
+            })
+            .catch(err => {
+                loadingMsg.remove();
+                msg(`❌ Error loading stack: ${err.message}`, 'agent');
+            });
+    }
+
+    function loadMoreOccurrences(loadBtn) {
+        loadBtn.innerText = '⏳ Loading...';
+        loadBtn.disabled = true;
+        
+        const formData = new FormData();
+        formData.append('page_start', window.nextPageStart || 100);
+        
+        fetch(`${API}/api/debug/load-more`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.error) {
+                msg(`❌ ${result.error}`, 'agent');
+                loadBtn.remove();
+                return;
+            }
+            
+            const list = document.getElementById('occurrences-list');
+            
+            // Add new occurrences to list
+            result.occurrences.forEach(occ => {
+                const btn = document.createElement('button');
+                btn.className = 'occurrence-btn';
+                btn.innerText = `[Line ${occ.line_number}] ${occ.matched_text}`;
+                btn.title = occ.matched_text;
+                btn.dataset.id = occ.id;
+                btn.dataset.occIndex = occ.id - 1;
+                btn.onclick = () => loadStackOnDemand(occ.id - 1, occ.line_number);
+                list.appendChild(btn);
+            });
+            
+            // Update pagination state
+            window.nextPageStart = result.next_page_start;
+            window.hasMore = result.has_more;
+            
+            // Update or remove Load More button
+            if (result.has_more && result.next_page_start !== null) {
+                loadBtn.innerText = `📥 Load Next 100 Occurrences`;
+                loadBtn.disabled = false;
+            } else {
+                msg('✅ All occurrences loaded!', 'agent');
+                loadBtn.remove();
+            }
+            
+            content.scrollTop = content.scrollHeight;
+        })
+        .catch(err => {
+            msg(`❌ Error loading more: ${err.message}`, 'agent');
+            loadBtn.innerText = `📥 Load Next 100 Occurrences`;
+            loadBtn.disabled = false;
+        });
     }
 
     function showStack(occId, context) {
